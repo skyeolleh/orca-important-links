@@ -43,7 +43,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   await mkdir(artifacts, { recursive: true })
   const backup = join(artifacts, `original-${version}.asar`), replacement = join(artifacts, `connected-${version}.asar`)
   await writeFile(backup, original); await writeFile(replacement, patched.buffer)
-  const plan = { version, pluginVersion: '0.4.0', install: resolve(install), originalPath: resolve(originalPath),
+  const pluginVersion = JSON.parse(await readFile(new URL('../orca-plugin.json', import.meta.url))).version
+  const plan = { version, pluginVersion, install: resolve(install), originalPath: resolve(originalPath),
     executable: resolve(executable), executableHash: sha256(await readFile(executable)),
     backup: resolve(backup), replacement: resolve(replacement), originalHash: sha256(original),
     replacementHash: sha256(patched.buffer), preservedEntries: patched.preserved, addedEntries: additions.size }

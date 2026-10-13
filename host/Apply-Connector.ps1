@@ -1,5 +1,6 @@
 ﻿param([switch]$WaitForExit, [switch]$ValidateOnly, [switch]$Restore)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Orca-ProcessGuard.ps1')
 $planPath = Join-Path $PSScriptRoot 'artifacts\connection-plan.json'
 $logPath = Join-Path $PSScriptRoot 'artifacts\apply-status.txt'
 function Log([string]$message) {
@@ -9,9 +10,7 @@ function Log([string]$message) {
 }
 function Hash([string]$path) { (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant() }
 function RunningOrca {
-  @(Get-Process -Name Orca -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -and [string]::Equals($_.Path, $plan.executable, [StringComparison]::OrdinalIgnoreCase)
-  })
+  @(Get-OrcaConnectionBlockingProcesses -Executable $plan.executable)
 }
 try {
   $plan = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -28,7 +27,7 @@ try {
   if ($ValidateOnly) { Log '대상·버전·원본·연결 파일 검증 통과. 설치본은 변경하지 않았습니다.'; exit 0 }
   if ((RunningOrca).Count -gt 0) {
     if (!$WaitForExit) { throw 'Orca가 실행 중입니다. 종료 후 적용하거나 -WaitForExit로 기다리세요.' }
-    Log 'Orca가 자연스럽게 종료될 때까지 대기합니다. 앱을 종료하거나 재시작하지 않습니다.'
+    Log 'Orca 앱이 종료될 때까지 대기합니다. 남은 충돌 보고기는 대기 대상에서 제외하며 앱·터미널은 종료하지 않습니다.'
     $deadline = (Get-Date).AddHours(24)
     while ((RunningOrca).Count -gt 0) {
       if ((Get-Date) -gt $deadline) { throw '대기 시간이 끝났습니다. 종료 후 다시 적용하세요.' }

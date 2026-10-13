@@ -16,6 +16,7 @@ test('적용 스크립트는 검증만 수행·원자적 적용·복원을 지�
   const script = join(root, 'Apply-Connector.ps1')
   try {
     await copyFile(new URL('../host/Apply-Connector.ps1', import.meta.url), script)
+    await copyFile(new URL('../host/Orca-ProcessGuard.ps1', import.meta.url), join(root, 'Orca-ProcessGuard.ps1'))
     await writeFile(plan.backup, original); await writeFile(plan.originalPath, original); await writeFile(plan.replacement, replacement); await writeFile(plan.executable, exe)
     await writeFile(join(artifacts, 'connection-plan.json'), JSON.stringify(plan))
     const call = (...args) => run('powershell.exe', ['-NoProfile', '-File', script, ...args], { windowsHide: true, timeout: 30000 })
@@ -27,6 +28,34 @@ test('적용 스크립트는 검증만 수행·원자적 적용·복원을 지�
     assert.deepEqual(await readFile(plan.backup), original)
   } finally {
     // 자동 생성한 전용 검증 폴더만 정리한다.
+    assert.ok(resolve(root).startsWith(resolve(tmpdir()) + '\\codex-links-install-'))
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('종료 후 남은 충돌 보고기는 제외하고 주 앱·렌더러·불명확한 프로세스는 계속 차단한다', { skip: process.platform !== 'win32' }, async () => {
+  const root = await mkdtemp(join(tmpdir(), 'codex-links-install-'))
+  const script = join(root, 'process-check.ps1')
+  try {
+    await copyFile(new URL('../host/Orca-ProcessGuard.ps1', import.meta.url), join(root, 'Orca-ProcessGuard.ps1'))
+    const source = `\uFEFF. (Join-Path $PSScriptRoot 'Orca-ProcessGuard.ps1')
+$taskExecutable = 'C:\\apps\\orca\\Orca.exe'
+function Check([string]$command, [string]$path = $taskExecutable) {
+  Test-OrcaProcessBlocksConnection -Process ([PSCustomObject]@{ExecutablePath=$path;CommandLine=$command}) -Executable $taskExecutable
+}
+@{
+  Main = Check 'C:\\apps\\orca\\Orca.exe'
+  Renderer = Check 'Orca.exe --type=renderer'
+  CrashReporter = Check 'Orca.exe --type=crashpad-handler --database=fixture'
+  Unknown = Check ''
+  DifferentExecutable = Check 'daemon-entry.js' 'C:\\daemon\\Orca.exe'
+  SimilarFlag = Check 'Orca.exe --type=crashpad-handler-other'
+  MissingOwner = Check 'Orca.exe --type=crashpad-handler' ''
+} | ConvertTo-Json -Compress`
+    await writeFile(script, source)
+    const { stdout } = await run('powershell.exe', ['-NoProfile', '-File', script], { windowsHide: true, timeout: 30000 })
+    assert.deepEqual(JSON.parse(stdout.trim()), { Main: true, Renderer: true, CrashReporter: false, Unknown: true, DifferentExecutable: false, SimilarFlag: true, MissingOwner: true })
+  } finally {
     assert.ok(resolve(root).startsWith(resolve(tmpdir()) + '\\codex-links-install-'))
     await rm(root, { recursive: true, force: true })
   }

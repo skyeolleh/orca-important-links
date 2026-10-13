@@ -3,7 +3,7 @@
     "id":  "session-links",
     "publisher":  "yeojh-local",
     "name":  "중요 링크",
-    "version":  "0.4.0",
+    "version":  "0.4.1",
     "description":  "현재 Codex 세션의 답변 링크와 모든 세션의 글로벌 링크를 관리합니다. 자동 수집·실제 세션 추적·바로 열기·영구 저장에는 저장소의 Orca 연결 코드를 한 번 적용해야 합니다.",
     "engines":  {
                     "orca":  "\u003e=1.4.222"
