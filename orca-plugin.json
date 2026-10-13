@@ -1,0 +1,26 @@
+{
+    "manifestVersion":  1,
+    "id":  "session-links",
+    "publisher":  "yeojh-local",
+    "name":  "중요 링크",
+    "version":  "0.3.2",
+    "description":  "작업별 링크 묶음과 공통 북마크를 관리하는 패널. 수동 등록·주소 복사·백업을 지원합니다. 자동 세션 추적·자동 수집·직접 열기·영구 저장은 현재 Orca 패널 API에서 지원되지 않습니다.",
+    "engines":  {
+                    "orca":  "\u003e=1.4.222"
+                },
+    "pluginApi":  1,
+    "contributes":  {
+                        "panels":  [
+                                       {
+                                           "id":  "links",
+                                           "title":  "중요 링크",
+                                           "icon":  "link",
+                                           "entry":  "panel.html"
+                                       }
+                                   ]
+                    },
+    "capabilities":  [
+
+                     ],
+    "repository":  "https://github.com/skyeolleh/orca-important-links"
+}

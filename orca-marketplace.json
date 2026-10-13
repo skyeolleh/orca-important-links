@@ -1,0 +1,16 @@
+{
+  "name": "중요 링크",
+  "owner": "skyeolleh",
+  "plugins": [
+    {
+      "id": "yeojh-local.session-links",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/skyeolleh/orca-important-links.git",
+        "ref": "main"
+      },
+      "description": "현재 세션과 글로벌 링크를 두 영역으로 관리하는 우측 패널. 수동 등록·글로벌 공유·백업을 지원합니다.",
+      "categories": ["panels", "productivity"]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "name": "orca-important-links",
+  "version": "0.3.2",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "node build.mjs", "test": "node --test test/*.test.mjs" },
+  "engines": { "node": ">=22" }
+}
