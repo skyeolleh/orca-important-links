@@ -9,7 +9,7 @@
         "url": "https://github.com/skyeolleh/orca-important-links.git",
         "ref": "main"
       },
-      "description": "현재 세션과 글로벌 링크를 두 영역으로 관리하는 우측 패널. 수동 등록·글로벌 공유·백업을 지원합니다.",
+      "description": "현재 Codex 세션의 답변 링크를 자동 수집하고 글로벌 링크를 영구 저장하는 우측 패널. 자동 연결에는 저장소의 Orca 연결 코드를 한 번 적용해야 합니다.",
       "categories": ["panels", "productivity"]
     }
   ]
