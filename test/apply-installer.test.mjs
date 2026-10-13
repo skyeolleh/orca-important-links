@@ -21,6 +21,7 @@ test('적용 스크립트는 검증만 수행·원자적 적용·복원을 지�
     await writeFile(join(artifacts, 'connection-plan.json'), JSON.stringify(plan))
     const call = (...args) => run('powershell.exe', ['-NoProfile', '-File', script, ...args], { windowsHide: true, timeout: 30000 })
     await call('-ValidateOnly'); assert.deepEqual(await readFile(plan.originalPath), original)
+    await assert.rejects(call('-AllowRunning')); assert.deepEqual(await readFile(plan.originalPath), original)
     await call(); assert.deepEqual(await readFile(plan.originalPath), replacement)
     await call('-Restore'); assert.deepEqual(await readFile(plan.originalPath), original)
     await writeFile(plan.originalPath, 'updated-by-another-process')

@@ -3,7 +3,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { mountLinksConnector, FRAME_NAME } from '../host/panel-connector.mjs'
-test('패널과 Orca 연결: 자동 수집·열기·별표·실제 세션 전환·늦은 기록·위조 요청', { skip: !process.env.HAPPY_DOM_MODULE }, async () => {
+import { buildConnectorBundle } from '../host/connector-bundle.mjs'
+for (const mode of ['module', 'bundle']) test(`패널과 Orca 연결 (${mode}): 자동 수집·열기·별표·실제 세션 전환·늦은 기록·위조 요청`, { skip: !process.env.HAPPY_DOM_MODULE }, async () => {
   const { Window } = await import(pathToFileURL(process.env.HAPPY_DOM_MODULE).href)
   const host = new Window({ url: 'http://localhost/' }), doc = host.document
   doc.body.innerHTML = '<iframe></iframe>'; const frame = doc.querySelector('iframe'); frame.name = FRAME_NAME
@@ -17,7 +18,15 @@ test('패널과 Orca 연결: 자동 수집·열기·별표·실제 세션 전환
     agentStatusByPaneKey: { 'tab:leaf': { paneKey: 'tab:leaf', agentType: 'codex', providerSession: { id: current } } }, getKnownWorktreeById: () => ({ path: 'D:/work' }) })
   const api = { plugins: { list: async () => [{ pluginKey: 'yeojh-local.session-links', version: pluginVersion, status: 'idle' }], onChanged: cb => { pluginChanged = cb; return () => {} } },
     nativeChat: { subscribe: (args, cb) => { callbacks.push({ args, cb }); return () => {} } }, shell: { openUrl: async url => opened.push(url), openPath: async path => opened.push(path) } }
-  const dispose = mountLinksConnector({ doc, store: { getState: state, subscribe: cb => { changed = cb; return () => {} } }, api, storage: host.localStorage })
+  const store = { getState: state, subscribe: cb => { changed = cb; return () => {} } }
+  let dispose
+  if (mode === 'module') dispose = mountLinksConnector({ doc, store, api, storage: host.localStorage })
+  else {
+    host.orcaImportantLinksStore = store; host.api = api
+    host.eval((await buildConnectorBundle('store-fixture.js')).replace(/^import .*\n/gm, ''))
+    doc.dispatchEvent(new host.Event('DOMContentLoaded'))
+    dispose = () => host.dispatchEvent(new host.Event('pagehide'))
+  }
   const tick = () => new Promise(resolve => setTimeout(resolve, 10))
   try {
     await tick(); assert.equal(callbacks.length, 0)

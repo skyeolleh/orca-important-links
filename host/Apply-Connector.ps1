@@ -1,4 +1,4 @@
-﻿param([switch]$WaitForExit, [switch]$ValidateOnly, [switch]$Restore)
+﻿param([switch]$WaitForExit, [switch]$ValidateOnly, [switch]$Restore, [switch]$AllowRunning)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Orca-ProcessGuard.ps1')
 $planPath = Join-Path $PSScriptRoot 'artifacts\connection-plan.json'
@@ -24,8 +24,19 @@ try {
   $source = if ($Restore) { $plan.backup } else { $plan.replacement }
   if ((Hash $plan.originalPath) -eq $toHash) { Log '이미 요청한 상태입니다.'; exit 0 }
   if ((Hash $plan.originalPath) -ne $fromHash) { throw '설치본이 준비 이후 바뀌었습니다. 덮어쓰지 않습니다.' }
+  if ($AllowRunning) {
+    if ($Restore -or $plan.strategy -ne 'preserve-layout' -or !$plan.cacheCompatible) { throw '이 계획은 실행 중 적용을 지원하지 않습니다.' }
+    & node (Join-Path $PSScriptRoot 'Validate-Stable-Plan.mjs') $planPath
+    if ($LASTEXITCODE -ne 0) { throw '기존 파일 위치와 실행 중 캐시 호환성 검증 실패.' }
+  }
   if ($ValidateOnly) { Log '대상·버전·원본·연결 파일 검증 통과. 설치본은 변경하지 않았습니다.'; exit 0 }
-  if ((RunningOrca).Count -gt 0) {
+  if ($AllowRunning) {
+    & node (Join-Path $PSScriptRoot 'apply-stable-bytes.mjs') $planPath
+    if ($LASTEXITCODE -ne 0) { throw '파일 위치를 보존한 연결 설치에 실패했습니다.' }
+    Log '연결 적용 완료. 파일 위치 보존·기존 캐시 호환·원본 백업·설치본 해시를 확인했습니다. 다음 Orca 실행부터 연결 코드가 로드됩니다.'
+    exit 0
+  }
+  if (!$AllowRunning -and (RunningOrca).Count -gt 0) {
     if (!$WaitForExit) { throw 'Orca가 실행 중입니다. 종료 후 적용하거나 -WaitForExit로 기다리세요.' }
     Log 'Orca 앱이 종료될 때까지 대기합니다. 남은 충돌 보고기는 대기 대상에서 제외하며 앱·터미널은 종료하지 않습니다.'
     $deadline = (Get-Date).AddHours(24)
@@ -41,7 +52,7 @@ try {
   try {
     Copy-Item -LiteralPath $source -Destination $staging
     if ((Hash $staging) -ne $toHash) { throw '임시 연결 파일 검증 실패.' }
-    if ((RunningOrca).Count -gt 0) { throw 'Orca가 다시 실행되어 적용을 중단합니다.' }
+    if (!$AllowRunning -and (RunningOrca).Count -gt 0) { throw 'Orca가 다시 실행되어 적용을 중단합니다.' }
     if ((Hash $plan.originalPath) -ne $fromHash) { throw '설치본이 바뀌어 적용을 중단합니다.' }
     [IO.File]::Replace($staging, $plan.originalPath, $rollback)
     if ((Hash $plan.originalPath) -ne $toHash) {
@@ -49,7 +60,7 @@ try {
       throw '적용 검증 실패. 원래 설치본으로 복원했습니다.'
     }
     $committed = $true
-    Log $(if ($Restore) { '복원 완료. 다음 Orca 실행부터 원래 설치본을 사용합니다.' } else { '연결 적용 완료. 다음 Orca 실행부터 중요 링크 0.4.0과 연결됩니다.' })
+    Log $(if ($Restore) { '복원 완료. 다음 Orca 실행부터 원래 설치본을 사용합니다.' } else { '연결 적용 완료. 원본 백업과 설치본 해시를 확인했습니다. 다음 Orca 실행부터 중요 링크 0.4.x와 연결됩니다.' })
   } finally {
     if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging }
     if ($committed -and (Test-Path -LiteralPath $rollback)) { Remove-Item -LiteralPath $rollback }

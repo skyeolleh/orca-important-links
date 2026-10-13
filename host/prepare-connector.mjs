@@ -1,7 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { join, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readArchive, appendArchive, sha256 } from './asar.mjs'
+import { readArchive, appendPreservingLayout, sha256 } from './asar.mjs'
+import { buildConnectorBundle } from './connector-bundle.mjs'
 
 // 실행 파일의 보안 설정은 읽기만 한다. 서명 검사가 켜져 있으면 준비를 거부한다.
 export function verifyFuse(executable) {
@@ -24,22 +25,14 @@ export async function prepare(install, artifacts) {
   const facade = [...archive.entries.keys()].find(path => /^out\/renderer\/assets\/store-[^/]+\.js$/.test(path) &&
     /as useAppStore[},]/.test(archive.read(path).toString('utf8')))
   if (!facade) throw new Error('상태 저장소 연결 지점을 찾지 못했습니다.')
-  let html = archive.read('out/renderer/index.html').toString('utf8')
+  const html = archive.read('out/renderer/index.html').toString('utf8')
   if (/session-links-entry|session-links-connector-entry|important-links-entry/.test(html)) throw new Error('이미 연결 코드가 있습니다. 기존 연결을 복원한 후 준비하세요.')
-  const additions = new Map(), prefix = 'out/renderer/assets/important-links-host/'
-  for (const name of ['session-links-core.mjs', 'session-links-feed.mjs', 'link-library.mjs', 'panel-connector.mjs']) {
-    additions.set(prefix + 'host/' + name, await readFile(new URL(name, import.meta.url)))
-  }
-  additions.set(prefix + 'src/link-parser.mjs', await readFile(new URL('../src/link-parser.mjs', import.meta.url)))
-  const entry = `import {useAppStore} from '../${facade.split('/').at(-1)}';
-import {mountLinksConnector} from './host/panel-connector.mjs';
-function start(){try{if(!window.api?.plugins?.list)return;const dispose=mountLinksConnector({store:useAppStore,api:window.api});window.addEventListener('pagehide',dispose,{once:true});}catch(error){console.error('중요 링크 연결 초기화 실패',error);}}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();`
-  additions.set(prefix + 'important-links-entry.mjs', Buffer.from(entry))
-  if (!html.includes('</head>')) throw new Error('Orca 진입 화면 형식이 바뀌었습니다.')
-  html = html.replace('</head>', '<script type="module" src="./assets/important-links-host/important-links-entry.mjs"></script>\n</head>')
-  additions.set('out/renderer/index.html', Buffer.from(html))
-  const patched = appendArchive(original, additions)
+  const match = html.match(/<script type="module" crossorigin src="\.\/([^"<>]+\.js)"/)
+  if (!match || !/^assets\/index-[\w-]+\.js$/.test(match[1])) throw new Error('Orca 시작 코드의 경로를 확인하지 못했습니다.')
+  const targetPath = 'out/renderer/' + match[1], boot = archive.read(targetPath)
+  if (boot.includes('ORCA_IMPORTANT_LINKS_CONNECTOR_V1')) throw new Error('이미 연결된 시작 코드입니다. 기존 연결을 복원한 후 준비하세요.')
+  const bundle = await buildConnectorBundle(facade.split('/').at(-1))
+  const patched = appendPreservingLayout(original, targetPath, Buffer.concat([boot, Buffer.from(bundle)]))
   await mkdir(artifacts, { recursive: true })
   const backup = join(artifacts, `original-${version}.asar`), replacement = join(artifacts, `connected-${version}.asar`)
   await writeFile(backup, original); await writeFile(replacement, patched.buffer)
@@ -47,7 +40,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
   const plan = { version, pluginVersion, install: resolve(install), originalPath: resolve(originalPath),
     executable: resolve(executable), executableHash: sha256(await readFile(executable)),
     backup: resolve(backup), replacement: resolve(replacement), originalHash: sha256(original),
-    replacementHash: sha256(patched.buffer), preservedEntries: patched.preserved, addedEntries: additions.size }
+    replacementHash: sha256(patched.buffer), preservedEntries: patched.preservedEntries, cachedEntries: patched.cachedEntries,
+    dataStart: patched.dataStart, cacheCompatible: true, strategy: 'preserve-layout', targetPath, addedEntries: 0 }
   await writeFile(join(artifacts, 'connection-plan.json'), JSON.stringify(plan, null, 2))
   return plan
 }
