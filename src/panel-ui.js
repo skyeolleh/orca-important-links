@@ -1,6 +1,7 @@
 const icons = {
   more: '<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', close: '<path d="m6 6 12 12M18 6 6 18"/>',
+  chevron: '<path d="m6 9 6 6 6-6"/>',
   star: '<path d="m12 3 2.8 5.7 6.3.9-4.5 4.4 1.1 6.2-5.7-3-5.7 3 1.1-6.2L3 9.6l6.3-.9L12 3Z"/>',
   page: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 13l-2 2 2 2M15 13l2 2-2 2"/>',
   file: '<path d="M14 2H6v20h14V8l-6-6ZM14 2v6h6M8 13h8M8 17h6"/>',
@@ -44,14 +45,21 @@ function render() {
   const list = $('#list'); list.replaceChildren()
   for (const [scope, title, source] of [['session', '현재 세션', state.links.filter(link => !link.hidden)], ['bookmarks', '글로벌', state.bookmarks]]) {
     const section = el('section', 'scope-section'); section.dataset.scope = scope; section.setAttribute('aria-label', title)
-    const heading = el('div', 'scope-heading'), label = el('h2', 'scope-title', title)
-    label.append(el('span', 'scope-count', String(source.length)))
+    const heading = el('div', 'scope-heading'), label = el('h2', 'scope-title')
+    const collapsed = state.collapsedSections?.[scope] === true
+    const toggle = el('button', 'scope-toggle'); toggle.id = `toggle-${scope}`
+    toggle.setAttribute('aria-expanded', String(!collapsed)); toggle.setAttribute('aria-controls', `scope-content-${scope}`)
+    toggle.setAttribute('aria-label', `${title} ${collapsed ? '펼치기' : '접기'}`); toggle.disabled = !state.connected
+    toggle.append(icon('chevron'), el('span', '', title), el('span', 'scope-count', String(source.length)))
+    toggle.onclick = () => perform('collapse', { scope, collapsed: !collapsed })
+    label.append(toggle)
     const add = el('button', 'icon-button'); add.id = scope === 'session' ? 'add' : 'add-global'
     add.setAttribute('aria-label', `${title} 링크 추가`); add.title = `${title} 링크 추가`; add.append(icon('plus'))
     add.disabled = !state.connected || (scope === 'session' && !state.session)
     add.onclick = () => addDialog(scope); heading.append(label, add); section.append(heading); list.append(section)
-    if (scope === 'session' && state.session) section.append(el('p', 'session-caption', state.session.title || '코덱스 세션'))
-    if (!source.length) section.append(el('p', 'scope-empty', scope === 'bookmarks' ? '다른 세션에서도 볼 링크를 등록하세요.' : !state.connected ? '연결 대기 중' : !state.session ? 'Codex 세션을 선택하세요.' : '답변에 제공된 프리뷰 링크가 여기에 모입니다.'))
+    const content = el('div', 'scope-content'); content.id = `scope-content-${scope}`; content.hidden = collapsed; section.append(content)
+    if (scope === 'session' && state.session) content.append(el('p', 'session-caption', state.session.title || '코덱스 세션'))
+    if (!source.length) content.append(el('p', 'scope-empty', scope === 'bookmarks' ? '다른 세션에서도 볼 링크를 등록하세요.' : !state.connected ? '연결 대기 중' : !state.session ? 'Codex 세션을 선택하세요.' : '답변에 제공된 프리뷰 링크가 여기에 모입니다.'))
     for (const link of [...source.filter(link => link.kind === 'preview'), ...source.filter(link => link.kind !== 'preview')]) {
       const params = { scope, id: link.id, sessionKey: state.session?.key }
       const row = el('article', `link-row${link.kind === 'preview' ? ' preview-card' : ''}`); row.dataset.key = link.id
@@ -76,10 +84,11 @@ function render() {
         const result = await perform('remove', params)
         if (result) toast(`${title}에서 제거했습니다.`, () => request('undo', { undoToken: result.undoToken }))
       }
-      actions.append(remove); row.append(body, actions); section.append(row)
+      actions.append(remove); row.append(body, actions); content.append(row)
       if (key === link.id && scopeId === scope && selectedAction) row.querySelector(`[data-action="${selectedAction}"]`)?.focus()
     }
     if (selectedId === add.id) add.focus()
+    if (selectedId === toggle.id) toggle.focus()
   }
 }
 function closeDialog() { $('#overlay').hidden = true; if (previousFocus?.isConnected) previousFocus.focus() }

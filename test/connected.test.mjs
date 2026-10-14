@@ -114,9 +114,30 @@ test('SSH 기록을 로컬로 읽지 않고 실행 파일 바로 열기를 거�
   let error
   subscribeLinksFeed({ nativeChat: { subscribe: assert.fail } }, session('remote', 'ssh:owner'), assert.fail, e => { error = e })
   assert.match(error, /SSH/)
-  await assert.rejects(openSessionLink({ shell: { openPath: assert.fail } }, { type: 'file', target: 'D:/run.exe' }, session('one')))
-  let args; await openSessionLink({ shell: { openPath: async (...a) => { args = a } } }, { type: 'file', target: 'D:/preview.html' }, session('one'))
+  await assert.rejects(openSessionLink({ shell: { openPath: assert.fail, openFilePath: assert.fail } }, { type: 'file', target: 'D:/run.exe' }, session('one')))
+  let args; await openSessionLink({ shell: { openPath: assert.fail, openFilePath: async (...a) => { args = a; return true } } }, { type: 'file', target: 'D:/preview.html' }, session('one'))
   assert.deepEqual(args, ['D:/preview.html', 'local'])
+})
+
+test('파일 열기 실패를 표시하고 원격 파일·없는 API를 폴더 열기로 대신 처리하지 않는다', async () => {
+  const link = { type: 'file', target: 'D:/preview.html' }
+  await assert.rejects(openSessionLink({ shell: { openPath: assert.fail, openFilePath: async () => false } }, link, session('one')), /파일을 열지 못/)
+  await assert.rejects(openSessionLink({ shell: { openPath: assert.fail } }, link, session('one')), /지원하지/)
+  await assert.rejects(openSessionLink({ shell: { openFilePath: assert.fail } }, link, session('one', 'runtime:owner')), /원격 호스트/)
+})
+
+test('현재 세션·글로벌 접기는 독립적으로 저장하고 다른 세션·재실행 후에도 유지한다', () => {
+  const data = storage(), model = new LinkLibrary(data); model.select(session('one'))
+  model.add({ scope: 'session', sessionKey: model.snapshot().session.key, text: 'D:/preview.html' })
+  model.setCollapsed({ scope: 'session', collapsed: true }); model.select(session('two'))
+  assert.deepEqual(model.snapshot().collapsedSections, { session: true, bookmarks: false })
+  const reopened = new LinkLibrary(data); reopened.setCollapsed({ scope: 'bookmarks', collapsed: true })
+  assert.deepEqual(reopened.snapshot().collapsedSections, { session: true, bookmarks: true })
+  reopened.setCollapsed({ scope: 'session', collapsed: false }); reopened.select(session('one'))
+  assert.equal(reopened.snapshot().links.length, 1); assert.equal(reopened.snapshot().collapsedSections.bookmarks, true)
+  assert.throws(() => reopened.setCollapsed({ scope: 'arbitrary', collapsed: true }))
+  data.setItem = () => { throw Error('quota') }; assert.throws(() => reopened.setCollapsed({ scope: 'session', collapsed: true }), /저장하지/)
+  assert.equal(reopened.snapshot().collapsedSections.session, false)
 })
 test('실행 파일의 서명 검사를 우회하지 않고 활성화된 보안 설정이면 설치 준비를 거부한다', () => {
   const file = Buffer.concat([Buffer.from('dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'), Buffer.from([1, 5, 48, 48, 48, 48, 48])])

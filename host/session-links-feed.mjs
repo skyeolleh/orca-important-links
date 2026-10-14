@@ -45,5 +45,9 @@ export async function openSessionLink(api, link, session) {
   if (!/\.(?:html?|md|txt|json|pdf|csv|tsv|xlsx?|docx?|pptx?|png|jpe?g|gif|webp|svg|mp4|webm|mov|mkv|wav|mp3|ogg)(?:$|[?#])/i.test(link.target)) {
     throw new Error('이 파일은 바로 열기를 지원하지 않습니다. 프리뷰·문서·미디어 파일을 등록하세요.')
   }
-  return api.shell.openPath(link.target, session.hostId)
+  if (session.hostId !== 'local') throw new Error('원격 호스트의 파일은 이 컴퓨터에서 바로 열 수 없습니다.')
+  if (typeof api.shell.openFilePath !== 'function') throw new Error('현재 Orca에서 파일 바로 열기를 지원하지 않습니다.')
+  if (await api.shell.openFilePath(link.target, session.hostId) !== true) {
+    throw new Error('파일을 열지 못했습니다. 파일 경로와 기본 연결 앱을 확인하세요.')
+  }
 }

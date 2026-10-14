@@ -17,7 +17,7 @@ for (const mode of ['module', 'bundle']) test(`패널과 Orca 연결 (${mode}): 
   const state = () => ({ activeWorktreeId: 'work', activeTabIdByWorktree: { work: 'tab' }, terminalLayoutsByTabId: { tab: { activeLeafId: 'leaf' } },
     agentStatusByPaneKey: { 'tab:leaf': { paneKey: 'tab:leaf', agentType: 'codex', providerSession: { id: current } } }, getKnownWorktreeById: () => ({ path: 'D:/work' }) })
   const api = { plugins: { list: async () => [{ pluginKey: 'yeojh-local.session-links', version: pluginVersion, status: 'idle' }], onChanged: cb => { pluginChanged = cb; return () => {} } },
-    nativeChat: { subscribe: (args, cb) => { callbacks.push({ args, cb }); return () => {} } }, shell: { openUrl: async url => opened.push(url), openPath: async path => opened.push(path) } }
+    nativeChat: { subscribe: (args, cb) => { callbacks.push({ args, cb }); return () => {} } }, shell: { openUrl: async url => opened.push(url), openPath: assert.fail, openFilePath: async path => { opened.push(path); return true } } }
   const store = { getState: state, subscribe: cb => { changed = cb; return () => {} } }
   let dispose
   if (mode === 'module') dispose = mountLinksConnector({ doc, store, api, storage: host.localStorage })
@@ -39,6 +39,11 @@ for (const mode of ['module', 'bundle']) test(`패널과 Orca 연결 (${mode}): 
     assert.equal(child.document.querySelectorAll('.link-row').length, 1)
     child.document.querySelector('[data-action="open"]').click(); await tick(); assert.deepEqual(opened, ['D:/work/page.html'])
     child.document.querySelector('[data-action="bookmark"]').click(); await tick(); assert.equal(child.document.querySelectorAll('.link-row').length, 2)
+    const collapse = child.document.querySelector('#toggle-session'); collapse.focus(); collapse.click(); await tick()
+    assert.equal(child.document.querySelector('#scope-content-session').hidden, true)
+    assert.equal(child.document.querySelector('#toggle-session').getAttribute('aria-expanded'), 'false')
+    assert.equal(child.document.activeElement.id, 'toggle-session')
+    assert.equal(child.document.querySelector('#scope-content-bookmarks').hidden, false)
     current = 'two'; changed(); await tick(); assert.equal(child.document.querySelectorAll('[data-scope="session"] .link-row').length, 0)
     assert.equal(child.document.querySelectorAll('[data-scope="bookmarks"] .link-row').length, 1)
     callbacks[0].cb({ type: 'appended', messages: [{ ...message, id: 'late' }] }); await tick()
@@ -46,6 +51,8 @@ for (const mode of ['module', 'bundle']) test(`패널과 Orca 연결 (${mode}): 
     host.dispatchEvent(new host.MessageEvent('message', { data: { type: 'session-links:request', requestId: 'fake', action: 'open', params: { target: 'D:/run.exe' } }, source: host }))
     await tick(); assert.equal(opened.length, 1)
     current = 'one'; changed(); await tick(); assert.equal(child.document.querySelectorAll('[data-scope="session"] .link-row').length, 1)
+    assert.equal(child.document.querySelector('#scope-content-session').hidden, true)
+    child.document.querySelector('#toggle-session').click(); await tick(); assert.equal(child.document.querySelector('#scope-content-session').hidden, false)
     child.document.querySelector('[data-scope="session"] [data-action="remove"]').click(); await tick()
     assert.equal(child.document.querySelectorAll('[data-scope="session"] .link-row').length, 0)
     assert.equal(child.document.querySelectorAll('[data-scope="bookmarks"] .link-row').length, 1)

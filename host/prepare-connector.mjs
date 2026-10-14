@@ -29,18 +29,28 @@ export async function prepare(install, artifacts) {
   if (/session-links-entry|session-links-connector-entry|important-links-entry/.test(html)) throw new Error('이미 연결 코드가 있습니다. 기존 연결을 복원한 후 준비하세요.')
   const match = html.match(/<script type="module" crossorigin src="\.\/([^"<>]+\.js)"/)
   if (!match || !/^assets\/index-[\w-]+\.js$/.test(match[1])) throw new Error('Orca 시작 코드의 경로를 확인하지 못했습니다.')
-  const targetPath = 'out/renderer/' + match[1], boot = archive.read(targetPath)
-  if (boot.includes('ORCA_IMPORTANT_LINKS_CONNECTOR_V1')) throw new Error('이미 연결된 시작 코드입니다. 기존 연결을 복원한 후 준비하세요.')
+  const targetPath = 'out/renderer/' + match[1], currentBoot = archive.read(targetPath)
+  const marker = Buffer.from('\n// ORCA_IMPORTANT_LINKS_CONNECTOR_V1\n'), markerAt = currentBoot.indexOf(marker)
+  if (markerAt < 0 && currentBoot.includes('ORCA_IMPORTANT_LINKS_CONNECTOR_V1')) throw new Error('기존 연결 코드의 형식을 확인하지 못했습니다.')
+  const boot = markerAt >= 0 ? currentBoot.subarray(0, markerAt) : currentBoot
   const bundle = await buildConnectorBundle(facade.split('/').at(-1))
-  const patched = appendPreservingLayout(original, targetPath, Buffer.concat([boot, Buffer.from(bundle)]))
+  const nextBoot = Buffer.concat([boot, Buffer.from(bundle)])
+  if (currentBoot.equals(nextBoot)) throw new Error('이미 최신 연결 코드가 설치돼 있습니다. Orca를 재실행해 확인하세요.')
+  const patched = appendPreservingLayout(original, targetPath, nextBoot)
   await mkdir(artifacts, { recursive: true })
-  const backup = join(artifacts, `original-${version}.asar`), replacement = join(artifacts, `connected-${version}.asar`)
-  await writeFile(backup, original); await writeFile(replacement, patched.buffer)
+  const originalHash = sha256(original), replacementHash = sha256(patched.buffer)
+  const backup = join(artifacts, `baseline-${version}-${originalHash.slice(0, 12)}.asar`), replacement = join(artifacts, `connected-${version}-${replacementHash.slice(0, 12)}.asar`)
+  for (const [path, data, hash] of [[backup, original, originalHash], [replacement, patched.buffer, replacementHash]]) {
+    try { await writeFile(path, data, { flag: 'wx' }) } catch (error) {
+      if (error.code !== 'EEXIST') throw error
+      if (sha256(await readFile(path)) !== hash) throw new Error('기존 백업·준비 파일의 내용이 다릅니다. 덮어쓰지 않습니다.')
+    }
+  }
   const pluginVersion = JSON.parse(await readFile(new URL('../orca-plugin.json', import.meta.url))).version
   const plan = { version, pluginVersion, install: resolve(install), originalPath: resolve(originalPath),
     executable: resolve(executable), executableHash: sha256(await readFile(executable)),
-    backup: resolve(backup), replacement: resolve(replacement), originalHash: sha256(original),
-    replacementHash: sha256(patched.buffer), preservedEntries: patched.preservedEntries, cachedEntries: patched.cachedEntries,
+    backup: resolve(backup), replacement: resolve(replacement), originalHash,
+    replacementHash, bootstrapHash: sha256(nextBoot), preservedEntries: patched.preservedEntries, cachedEntries: patched.cachedEntries,
     dataStart: patched.dataStart, cacheCompatible: true, strategy: 'preserve-layout', targetPath, addedEntries: 0 }
   await writeFile(join(artifacts, 'connection-plan.json'), JSON.stringify(plan, null, 2))
   return plan

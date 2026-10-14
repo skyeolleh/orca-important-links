@@ -66,6 +66,7 @@ export function mountLinksConnector({ doc = document, store, api, storage = loca
       let value
       switch (data.action) {
         case 'bookmark': library.bookmark(params); break
+        case 'collapse': library.setCollapsed(params); break
         case 'hide': library.hide(params); break
         case 'add': library.add(params); break
         case 'remove': value = library.remove(params); break
@@ -85,6 +86,7 @@ export function mountLinksConnector({ doc = document, store, api, storage = loca
   function onStorage(event) {
     if (event.key?.startsWith('orca-session-links:')) {
       library.reloadBookmarks()
+      library.reloadPreferences()
       if (library.session) library.links = loadLinks(storage, library.session)
       publish()
     }

@@ -2,12 +2,26 @@ import { normalizeLink, classifyLink, linksFromMessages, mergeLinks, loadLinks, 
   sessionStorageKey, extractMarkdownLinks } from './session-links-core.mjs'
 
 const BOOKMARKS = 'orca-session-links:v2:bookmarks'
+const PREFERENCES = 'orca-session-links:v3:panel-preferences'
 const bookmarkId = (link, hostId) => `${link.type === 'web' ? 'web' : hostId}|${link.key}`
 export class LinkLibrary {
   constructor(storage) {
     this.storage = storage; this.session = null; this.links = []; this.messages = new Map(); this.error = ''
     this.undoEntries = new Map()
     this.reloadBookmarks()
+    this.reloadPreferences()
+  }
+  reloadPreferences() {
+    let saved
+    try { saved = JSON.parse(this.storage.getItem(PREFERENCES) ?? '{}') } catch {}
+    this.collapsedSections = { session: saved?.session === true, bookmarks: saved?.bookmarks === true }
+  }
+  setCollapsed(params) {
+    if (!['session', 'bookmarks'].includes(params.scope) || typeof params.collapsed !== 'boolean') throw new Error('접기 설정이 올바르지 않습니다.')
+    this.reloadPreferences()
+    const next = { ...this.collapsedSections, [params.scope]: params.collapsed }
+    try { this.storage.setItem(PREFERENCES, JSON.stringify(next)) } catch { throw new Error('접기 상태를 저장하지 못했습니다.') }
+    this.collapsedSections = next
   }
   reloadBookmarks() {
     this.bookmarks = []
@@ -188,6 +202,6 @@ export class LinkLibrary {
     return { version: 4, session: this.session ? { id: this.session.id, hostId: this.session.hostId,
       title: this.session.title, key: sessionStorageKey(this.session) } : null,
       links: this.links.map(link => ({ ...link, id: link.key, bookmarked: ids.has(bookmarkId(link, this.session.hostId)) })),
-      bookmarks: this.bookmarks.map(link => ({ ...link, bookmarked: true })), error: this.error, hasMore: this.hasMore }
+      bookmarks: this.bookmarks.map(link => ({ ...link, bookmarked: true })), collapsedSections: { ...this.collapsedSections }, error: this.error, hasMore: this.hasMore }
   }
 }
